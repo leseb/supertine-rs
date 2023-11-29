@@ -15,7 +15,7 @@ func main() {
 		return
 	}
 	uuid := fmt.Sprintf("%X-%X-%X-%X-%X", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 10000000000; i++ {
 		log.Println(time.Now(), uuid)
 		time.Sleep(1 * time.Second)
 	}
