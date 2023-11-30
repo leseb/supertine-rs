@@ -91,11 +91,14 @@ async fn file_changed(
     tx_copy: broadcast::Sender<u32>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     loop {
-        let initial_path = binary_file_path.clone();
-        let initial_path_meta = std::fs::metadata(initial_path);
+        // Stat the file while entering the loop
+        let initial_path_meta = std::fs::metadata(&binary_file_path);
+
+        // Sleep for 1 second
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        let initial_path_after_one_sec_meta = binary_file_path.clone();
-        let path_after_one_sec_meta = std::fs::metadata(initial_path_after_one_sec_meta);
+
+        // Stat the file again after 1 second
+        let path_after_one_sec_meta = std::fs::metadata(&binary_file_path);
 
         // If the file doesn't exist, it's fine, it might be that it's being removed or created
         // Precisely check for the is not found error
