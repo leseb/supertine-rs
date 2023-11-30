@@ -198,23 +198,20 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
 
     // Create a brodcast channel to send and receive the child PID
-    let (tx_copy, _rx_copy): (broadcast::Sender<u32>, broadcast::Receiver<u32>) =
-        broadcast::channel(10);
+    let (tx, _rx): (broadcast::Sender<u32>, broadcast::Receiver<u32>) = broadcast::channel(10);
+    let mut rx = tx.subscribe();
 
-    let mut _rx_copy = tx_copy.subscribe();
-
-    tokio::spawn(file_changed(
-        binary_file_path.to_path_buf().clone(),
-        tx_copy,
-    ));
+    // Spawn the file watcher
+    tokio::spawn(file_changed(binary_file_path.to_path_buf(), tx));
 
     // Running a loop that acts as a watcher for the binary file
     loop {
-        let a = binary_file_path.to_path_buf().clone();
-        let b = binary_args_file_path.to_path_buf().clone();
-
         // Run the binary
-        let mut child = run_cmd(a, b).unwrap();
+        let mut child = run_cmd(
+            binary_file_path.to_path_buf(),
+            binary_args_file_path.clone(),
+        )
+        .unwrap();
 
         tokio::select! {
             // Main program handler for the interrupt signal
@@ -230,7 +227,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             },
 
             // the binary was reloaded, so we kill the child process
-            _ = _rx_copy.recv() => {
+            _ = rx.recv() => {
             log::info!("received termination request, killing pid {}", child.id().unwrap());
             child.kill().await.expect("kill failed");
             },
