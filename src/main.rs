@@ -97,6 +97,45 @@ async fn file_changed(
         let initial_path_after_one_sec_meta = binary_file_path.to_path_buf().clone();
         let path_after_one_sec_meta = std::fs::metadata(initial_path_after_one_sec_meta);
 
+        // If the file doesn't exist, it's fine, it might be that it's being removed or created
+        // Precisely check for the is not found error
+        match (initial_path_meta, path_after_one_sec_meta) {
+            (Ok(initial_meta), Ok(after_one_sec_meta)) => {
+                // if the elapsed time is different, it means that the file has changed
+                if initial_meta.created().unwrap().elapsed().unwrap().as_secs()
+                    != after_one_sec_meta
+                        .created()
+                        .unwrap()
+                        .elapsed()
+                        .unwrap()
+                        .as_secs()
+                {
+                    log::info!(
+                        "file {} changed, notifying channel for reload",
+                        binary_file_path.display()
+                    );
+                    // notifying the channel
+                    match tx_copy.send(1) {
+                        Ok(_) => {}
+                        Err(e) => log::error!("Failed to send message to the channel: {}", e),
+                    }
+                }
+            }
+            (Err(e), _) | (_, Err(e)) => {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    return Err(Box::new(e));
+                } else {
+                    log::error!(
+                        "file {} doesn't exist, but the program might be running, will reload it once the new program exists",
+                        binary_file_path.display()
+                    );
+                    continue;
+                }
+            }
+        }
+    }
+}
+
 // This small handler is used to catch the interruptuption signals
 async fn signal_handler() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut hangup = signal(SignalKind::hangup())?;
