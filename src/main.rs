@@ -1,10 +1,8 @@
-use chrono::Local;
 use clap::{Arg, Command as ClapCommand};
 use env_logger::Builder;
 use log::LevelFilter;
 use std::fs::File;
 use std::io::Error;
-use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::path::PathBuf;
@@ -136,19 +134,8 @@ async fn signal_handler() -> Result<(), Box<dyn std::error::Error + Send + Sync>
 
 #[tokio::main]
 async fn main() {
-    // Setup logger with nano seconds
-    Builder::new()
-        .format(|buf, record| {
-            writeln!(
-                buf,
-                "{} [{}] - {}",
-                Local::now().format("%Y-%m-%dT%H:%M:%S:%f"),
-                record.level(),
-                record.args()
-            )
-        })
-        .filter(None, LevelFilter::Info)
-        .init();
+    // Setup logger
+    Builder::new().filter(None, LevelFilter::Info).init();
 
     let (first, second) = tokio::join!(signal_handler(), run(),);
     first.unwrap();
