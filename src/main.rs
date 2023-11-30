@@ -17,7 +17,7 @@ use tokio::{
 // TODO: Use anyhow for error with the .context() method
 const ARGS_EXTENSION: &str = "args";
 
-fn run_cmd(binary_file_path: PathBuf, binary_args_file_path: PathBuf) -> Result<Child, Error> {
+fn run_cmd(binary_file_path: &PathBuf, binary_args_file_path: &PathBuf) -> Result<Child, Error> {
     // Check if the args file is present
     let _binary_args_path = match binary_args_file_path.metadata() {
         Ok(stat) => stat,
@@ -207,11 +207,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Running a loop that acts as a watcher for the binary file
     loop {
         // Run the binary
-        let mut child = run_cmd(
-            binary_file_path.to_path_buf(),
-            binary_args_file_path.clone(),
-        )
-        .unwrap();
+        let mut child = run_cmd(&binary_file_path.to_path_buf(), &binary_args_file_path).unwrap();
 
         tokio::select! {
             // Main program handler for the interrupt signal
