@@ -91,43 +91,16 @@ async fn file_changed(
         let initial_path_after_one_sec_meta = binary_file_path.to_path_buf().clone();
         let path_after_one_sec_meta = std::fs::metadata(initial_path_after_one_sec_meta);
 
-        // If files don't exist, it's fine, it might be that it's being removed or created
-        if initial_path_meta.is_err() || path_after_one_sec_meta.is_err() {
-            log::info!("file doesn't exist, try again");
-            continue;
-        }
-        // Check if both files have the same inode
-        if initial_path_meta
-            .unwrap()
-            .created()
-            .unwrap()
-            .elapsed()
-            .unwrap()
-            .as_secs()
-            != path_after_one_sec_meta
-                .unwrap()
-                .created()
-                .unwrap()
-                .elapsed()
-                .unwrap()
-                .as_secs()
-        {
-            log::info!("file has changed, notifying channel");
-            // notifying the channel
-            let _ = tx_copy.send(1);
-        }
-    }
-}
-
+// This small handler is used to catch the interruptuption signals
 async fn signal_handler() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // An infinite stream of hangup signals.
-    let mut sigint_stream = signal(SignalKind::interrupt())?;
+    let mut hangup = signal(SignalKind::hangup())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sigterm = signal(SignalKind::terminate())?;
 
-    // Print whenever a interrupt signal is received
-    loop {
-        sigint_stream.recv().await;
-        log::info!("bye now!");
-        break;
+    tokio::select! {
+        _ = sigint.recv() => {},
+        _ = sigterm.recv() => {},
+        _ = hangup.recv() => {},
     }
     Ok(())
 }
