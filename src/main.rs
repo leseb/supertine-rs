@@ -185,7 +185,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let binary_file_path = Path::new(cmd.get_one::<String>("binary-path").unwrap());
     let _binary_file_stat = match binary_file_path.metadata() {
-        Ok(stat) => stat,
+        Ok(_) => {}
         Err(e) => {
             log::error!("{}: {}", binary_file_path.display(), e);
             process::exit(1);
