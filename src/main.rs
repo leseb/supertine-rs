@@ -45,6 +45,8 @@ fn run_cmd(binary_file_path: PathBuf, binary_args_file_path: PathBuf) -> Result<
     );
 
     let tries = 0;
+    // We try multiple times since the file might be busy
+    // This happens if the file is being written to (e.g. go build)
     while tries < 1000 {
         let child = Command::new(binary_file_path.to_str().unwrap())
             .args(args)
@@ -53,7 +55,7 @@ fn run_cmd(binary_file_path: PathBuf, binary_args_file_path: PathBuf) -> Result<
         match child {
             // if ok => return child so that we can kill it later
             Ok(child) => {
-                log::info!(
+                log::debug!(
                     "program '{}' pid is '{}'",
                     binary_file_path.file_name().unwrap().to_str().unwrap(),
                     child.id().unwrap()
@@ -80,6 +82,10 @@ fn run_cmd(binary_file_path: PathBuf, binary_args_file_path: PathBuf) -> Result<
     ))
 }
 
+// This async function checks if the binary file has changed every second
+// If it has, it notifies the channel
+// We don't use inotify here, since we are only watching over a single file
+// We could potentially increase the interval value too
 async fn file_changed(
     binary_file_path: PathBuf,
     tx_copy: broadcast::Sender<u32>,
@@ -152,7 +158,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         cmd.get_one::<String>("arguments-file-path").unwrap().into()
     };
 
-    // Create a brodcast channel to send an receive the child PID
+    // Create a brodcast channel to send and receive the child PID
     let (tx_copy, _rx_copy): (broadcast::Sender<u32>, broadcast::Receiver<u32>) =
         broadcast::channel(10);
 
@@ -163,6 +169,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tx_copy,
     ));
 
+    // Running a loop that acts as a watcher for the binary file
     loop {
         let a = binary_file_path.to_path_buf().clone();
         let b = binary_args_file_path.to_path_buf().clone();
@@ -173,14 +180,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tokio::select! {
             // Main program handler for the interrupt signal
             _ = signal_handler() => {
-            log::info!("received interrupt signal for program '{}',",binary_file_path.file_name().unwrap().to_str().unwrap());
+            log::info!("received signal for program '{}', bye now!",binary_file_path.file_name().unwrap().to_str().unwrap());
             child.kill().await.expect("kill failed");
             process::exit(0);
             },
 
             // Child process handler once the program is done
             _ = child.wait() => {
-                log::info!("child exited");
+                log::info!("program '{}' exited", binary_file_path.file_name().unwrap().to_str().unwrap());
             },
 
             // the binary was reloaded, so we kill the child process
