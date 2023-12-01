@@ -1,5 +1,6 @@
 use clap::{Arg, Command as ClapCommand};
 use env_logger::Builder;
+use libc;
 use log::LevelFilter;
 use std::fs::File;
 use std::io::Error;
@@ -62,12 +63,15 @@ fn run_cmd(binary_file_path: &PathBuf, binary_args_file_path: &PathBuf) -> Resul
                 );
                 return Ok(child);
             }
-            Err(e) => match e.kind() {
-                // Requires feature gate and not using stable channel...
+            Err(e) => match e.raw_os_error() {
+                //  Err(e) => match e.kind() {
+                // Re-add the error code here once https://github.com/rust-lang/rust/issues/86442
+                // is fixed
                 // std::io::ErrorKind::ExecutableFileBusy => {
-                //     log::error!("{} not found", self.binary_file_path.display());
-                //     continue;
-                // }
+                Some(libc::ETXTBSY) => {
+                    log::error!("file {} busy, trying again", binary_file_path.display());
+                    continue;
+                }
                 other_error => {
                     log::error!("{:?}", other_error);
                     process::exit(1);
