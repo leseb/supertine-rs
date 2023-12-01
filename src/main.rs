@@ -49,7 +49,7 @@ fn run_cmd(binary_file_path: &PathBuf, binary_args_file_path: &PathBuf) -> Resul
     // This happens if the file is being written to (e.g. go build)
     while tries < 1000 {
         let child = Command::new(binary_file_path.to_str().unwrap())
-            .args(args)
+            .args(&args)
             .spawn();
 
         match child {
