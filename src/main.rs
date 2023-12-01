@@ -88,7 +88,7 @@ fn run_cmd(binary_file_path: &PathBuf, binary_args_file_path: &PathBuf) -> Resul
 // We could potentially increase the interval value too
 async fn file_changed(
     binary_file_path: PathBuf,
-    tx_copy: broadcast::Sender<u32>,
+    tx: broadcast::Sender<u32>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     loop {
         // Stat the file while entering the loop
@@ -118,7 +118,7 @@ async fn file_changed(
                         binary_file_path.display()
                     );
                     // notifying the channel
-                    match tx_copy.send(1) {
+                    match tx.send(1) {
                         Ok(_) => {}
                         Err(e) => log::error!("Failed to send message to the channel: {}", e),
                     }
