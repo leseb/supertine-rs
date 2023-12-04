@@ -168,6 +168,7 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Initialize command line
     let cmd = ClapCommand::new("example")
                         .version("1.0")
                         .about("clap example")
@@ -190,14 +191,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         )
                         .get_matches();
 
+    // Stat the file to make it sure it exists
     let binary_file_path = Path::new(cmd.get_one::<String>("binary-path").unwrap());
-    let _binary_file_stat = match binary_file_path.metadata() {
-        Ok(_) => {}
-        Err(e) => {
-            log::error!("{}: {}", binary_file_path.display(), e);
-            process::exit(1);
-        }
-    };
+    // Same for the arg file, if not assume a default value
     let binary_args_file_path = if cmd.get_one::<String>("arguments-file-path").is_none() {
         binary_file_path.with_extension(ARGS_EXTENSION)
     } else {
