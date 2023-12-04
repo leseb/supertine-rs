@@ -193,6 +193,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Stat the file to make it sure it exists
     let binary_file_path = Path::new(cmd.get_one::<String>("binary-path").unwrap());
+
+    // Check if the binary file exists
+    assert!(
+        binary_file_path.try_exists().unwrap(),
+        "{} does not exist",
+        binary_file_path.display()
+    );
+
     // Same for the arg file, if not assume a default value
     let binary_args_file_path = if cmd.get_one::<String>("arguments-file-path").is_none() {
         binary_file_path.with_extension(ARGS_EXTENSION)
