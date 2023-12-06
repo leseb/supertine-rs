@@ -17,6 +17,7 @@ use tokio::{
 
 // TODO: Use anyhow for error with the .context() method
 const ARGS_EXTENSION: &str = "args";
+const DEFAULT_WATCH_INTERVAL: &str = "1"; // watch for file change every second
 
 fn run_cmd(binary_file_path: &PathBuf, binary_args_file_path: &PathBuf) -> Result<Child, Error> {
     // Check if the args file is present
@@ -92,14 +93,15 @@ fn run_cmd(binary_file_path: &PathBuf, binary_args_file_path: &PathBuf) -> Resul
 // We could potentially increase the interval value too
 async fn file_changed(
     binary_file_path: PathBuf,
+    interval: u64,
     tx: broadcast::Sender<u32>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     loop {
         // Stat the file while entering the loop
         let initial_path_meta = std::fs::metadata(&binary_file_path);
 
-        // Sleep for 1 second
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        // Sleep
+        tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
 
         // Stat the file again after 1 second
         let path_after_one_sec_meta = std::fs::metadata(&binary_file_path);
@@ -189,6 +191,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                              .long_help("Arguments to pass to the binary while executing it (defaults to the binary path suffixed with .args")
                              .required(false)
                         )
+                        .arg(Arg::new("watch-interval")
+                             .short('w')
+                             .long("watch-interval")
+                             .required(false)
+                             .default_value(DEFAULT_WATCH_INTERVAL)
+                             .value_parser(clap::value_parser!(u64))
+                             .help("How often to check for file changes in seconds")
+                        )
                         .get_matches();
 
     // Stat the file to make it sure it exists
@@ -212,8 +222,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (tx, _rx): (broadcast::Sender<u32>, broadcast::Receiver<u32>) = broadcast::channel(10);
     let mut rx = tx.subscribe();
 
+    // Clone to avoid
+    // let watch_interval = cmd.get_one::<u64>("watch-interval").unwrap();
+    //                      ^^^ borrowed value does not live long enough
+    let watch_interval = cmd.get_one::<u64>("watch-interval").unwrap().clone();
+
     // Spawn the file watcher
-    tokio::spawn(file_changed(binary_file_path.to_path_buf(), tx));
+    tokio::spawn(file_changed(
+        binary_file_path.to_path_buf(),
+        watch_interval,
+        tx,
+    ));
 
     // Running a loop that acts as a watcher for the binary file
     loop {
