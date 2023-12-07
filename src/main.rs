@@ -1,13 +1,13 @@
-use clap::{Arg, Command as ClapCommand};
+use clap::{value_parser, Arg, Command as ClapCommand};
 use env_logger::Builder;
 use libc;
 use log::LevelFilter;
-use std::fs::File;
-use std::io::Error;
-use std::io::{BufRead, BufReader};
-use std::path::Path;
-use std::path::PathBuf;
-use std::process;
+use std::{
+    fs::File,
+    io::{BufRead, BufReader, Error},
+    path::PathBuf,
+    process,
+};
 use tokio::{
     process::Child,
     process::Command,
@@ -19,7 +19,105 @@ use tokio::{
 const ARGS_EXTENSION: &str = "args";
 const DEFAULT_WATCH_INTERVAL: &str = "1"; // watch for file change every second
 
-fn run_cmd(binary_file_path: &PathBuf, binary_args_file_path: &PathBuf) -> Result<Child, Error> {
+#[tokio::main]
+async fn main() {
+    // Setup logger
+    Builder::new().filter(None, LevelFilter::Info).init();
+
+    let (first, second) = tokio::join!(signal_handler(), run(),);
+    first.unwrap();
+    second.unwrap();
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Initialize command line
+    let cmd = ClapCommand::new("supertiny")
+                        .version("1.0")
+                        .about("supertiny - process watcher")
+                        .arg(Arg::new("binary-path")
+                             .short('b')
+                             .long("binary-path")
+                             .value_name("binary path")
+                             .help("Path of the binary to execute.")
+                             .required(true)
+                             .num_args(0..)
+                             .value_parser(value_parser!(PathBuf))
+                        )
+                        .arg(Arg::new("arguments-file-path")
+                             .short('a')
+                             .long("arguments-file-path")
+                             .value_name("arguments file path")
+                             .help("Arguments to pass to the binary execution")
+                             .long_help("Arguments to pass to the binary while executing it (defaults to the binary path suffixed with .args")
+                             .required(false)
+                             .value_parser(value_parser!(PathBuf))
+                        )
+                        .arg(Arg::new("watch-interval")
+                             .short('w')
+                             .long("watch-interval")
+                             .required(false)
+                             .default_value(DEFAULT_WATCH_INTERVAL)
+                             .value_parser(value_parser!(u64))
+                             .help("How often to check for file changes in seconds")
+                        )
+                        .get_matches();
+
+    // Stat the file to make it sure it exists
+    let binary_file_path = cmd.get_one::<PathBuf>("binary-path").unwrap();
+    assert!(
+        binary_file_path.try_exists().unwrap(),
+        "{} does not exist",
+        binary_file_path.display()
+    );
+
+    // Same for the arg file, if not assume a default value
+    let default_args_file_path = binary_file_path.with_extension(ARGS_EXTENSION);
+    let binary_args_file_path = if cmd.get_one::<PathBuf>("arguments-file-path").is_none() {
+        &default_args_file_path
+    } else {
+        cmd.get_one::<PathBuf>("arguments-file-path").unwrap()
+    };
+
+    // Create a brodcast channel to send and receive the child PID
+    let (tx, _rx): (broadcast::Sender<u32>, broadcast::Receiver<u32>) = broadcast::channel(10);
+    let mut rx = tx.subscribe();
+
+    // Clone to avoid
+    // let watch_interval = cmd.get_one::<u64>("watch-interval").unwrap();
+    //                      ^^^ borrowed value does not live long enough
+    let watch_interval = cmd.get_one::<u64>("watch-interval").unwrap().clone();
+
+    // Spawn the file watcher
+    tokio::spawn(file_changed(binary_file_path.clone(), watch_interval, tx));
+
+    // Running a loop that acts as a watcher for the binary file
+    loop {
+        // Run the binary
+        let mut child = run_cmd(binary_file_path.clone(), &binary_args_file_path).unwrap();
+
+        tokio::select! {
+            // Main program handler for the interrupt signal
+            _ = signal_handler() => {
+            log::info!("received signal for program '{}', bye now!",binary_file_path.file_name().unwrap().to_str().unwrap());
+            child.kill().await.expect("kill failed");
+            process::exit(0);
+            },
+
+            // Child process handler once the program is done
+            _ = child.wait() => {
+                log::info!("program '{}' exited", binary_file_path.file_name().unwrap().to_str().unwrap());
+            },
+
+            // the binary was reloaded, so we kill the child process
+            _ = rx.recv() => {
+            log::info!("received termination request, killing pid {}", child.id().unwrap());
+            child.kill().await.expect("kill failed");
+            },
+        }
+    }
+}
+
+fn run_cmd(binary_file_path: PathBuf, binary_args_file_path: &PathBuf) -> Result<Child, Error> {
     // Check if the args file is present
     let _binary_args_path = match binary_args_file_path.metadata() {
         Ok(stat) => stat,
@@ -157,106 +255,4 @@ async fn signal_handler() -> Result<(), Box<dyn std::error::Error + Send + Sync>
         _ = hangup.recv() => {},
     }
     Ok(())
-}
-
-#[tokio::main]
-async fn main() {
-    // Setup logger
-    Builder::new().filter(None, LevelFilter::Info).init();
-
-    let (first, second) = tokio::join!(signal_handler(), run(),);
-    first.unwrap();
-    second.unwrap();
-}
-
-async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Initialize command line
-    let cmd = ClapCommand::new("example")
-                        .version("1.0")
-                        .about("clap example")
-                        .arg(Arg::new("binary-path")
-                             .short('b')
-                             .long("binary-path")
-                             .value_name("binary path")
-                             .help("Path of the binary to execute.")
-                             .required(true)
-                             .num_args(0..)
-
-                        )
-                        .arg(Arg::new("arguments-file-path")
-                             .short('a')
-                             .long("arguments-file-path")
-                             .value_name("arguments file path")
-                             .help("Arguments to pass to the binary execution")
-                             .long_help("Arguments to pass to the binary while executing it (defaults to the binary path suffixed with .args")
-                             .required(false)
-                        )
-                        .arg(Arg::new("watch-interval")
-                             .short('w')
-                             .long("watch-interval")
-                             .required(false)
-                             .default_value(DEFAULT_WATCH_INTERVAL)
-                             .value_parser(clap::value_parser!(u64))
-                             .help("How often to check for file changes in seconds")
-                        )
-                        .get_matches();
-
-    // Stat the file to make it sure it exists
-    let binary_file_path = Path::new(cmd.get_one::<String>("binary-path").unwrap());
-
-    // Check if the binary file exists
-    assert!(
-        binary_file_path.try_exists().unwrap(),
-        "{} does not exist",
-        binary_file_path.display()
-    );
-
-    // Same for the arg file, if not assume a default value
-    let binary_args_file_path = if cmd.get_one::<String>("arguments-file-path").is_none() {
-        binary_file_path.with_extension(ARGS_EXTENSION)
-    } else {
-        cmd.get_one::<String>("arguments-file-path").unwrap().into()
-    };
-
-    // Create a brodcast channel to send and receive the child PID
-    let (tx, _rx): (broadcast::Sender<u32>, broadcast::Receiver<u32>) = broadcast::channel(10);
-    let mut rx = tx.subscribe();
-
-    // Clone to avoid
-    // let watch_interval = cmd.get_one::<u64>("watch-interval").unwrap();
-    //                      ^^^ borrowed value does not live long enough
-    let watch_interval = cmd.get_one::<u64>("watch-interval").unwrap().clone();
-
-    // Spawn the file watcher
-    tokio::spawn(file_changed(
-        binary_file_path.to_path_buf(),
-        watch_interval,
-        tx,
-    ));
-
-    // Running a loop that acts as a watcher for the binary file
-    loop {
-        // Run the binary
-        let mut child = run_cmd(&binary_file_path.to_path_buf(), &binary_args_file_path).unwrap();
-
-        tokio::select! {
-            // Main program handler for the interrupt signal
-            _ = signal_handler() => {
-            log::info!("received signal for program '{}', bye now!",binary_file_path.file_name().unwrap().to_str().unwrap());
-            child.kill().await.expect("kill failed");
-            process::exit(0);
-            },
-
-            // Child process handler once the program is done
-            _ = child.wait() => {
-                log::info!("program '{}' exited", binary_file_path.file_name().unwrap().to_str().unwrap());
-            },
-
-            // the binary was reloaded, so we kill the child process
-            _ = rx.recv() => {
-            log::info!("received termination request, killing pid {}", child.id().unwrap());
-            child.kill().await.expect("kill failed");
-            },
-        }
-    }
 }
