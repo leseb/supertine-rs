@@ -1,0 +1,24 @@
+pull_request_rules:
+- name: auto-merge
+  description: automatic merge
+  conditions:
+    - "#approved-reviews-by>=1"
+  actions:
+    merge:
+      method: merge
+      commit_message_template: |
+        {{ title }} (#{{ number }})
+
+        {{ body }}
+
+        {% for user in approved_reviews_by %}
+        Approved-By: {{user}}
+        {% endfor %}
+    delete_head_branch:
+
+- name: automatic approval
+  conditions:
+    - label=approve
+  actions:
+    review:
+      type: APPROVE
