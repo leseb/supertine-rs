@@ -12,7 +12,7 @@ pull_request_rules:
         {{ body }}
 
         {% for user in approved_reviews_by %}
-        Approved-By: {{user}} <{{user.email}}> {{ user.login }} {{ user.name }} {{ user.id }}
+        Approved-By: {{user}}
         {% endfor %}
     delete_head_branch:
 
