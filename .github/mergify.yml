@@ -12,7 +12,13 @@ pull_request_rules:
         {{ body }}
 
         {% for user in approved_reviews_by %}
-        Approved-By: {{user}}
+        {% if user == "leseb" %}
+        Approved-by: "Sébastien Han <seb@redhat.com>"
+        {% elif user == "mergify[bot]" %}
+        Approved-by: mergiyo!
+        {% else %}
+        Approved-by: {{ user }}
+        {% endif %}
         {% endfor %}
     delete_head_branch:
 
