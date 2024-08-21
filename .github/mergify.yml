@@ -11,14 +11,13 @@ pull_request_rules:
 
         {{ body }}
 
+        {% set approval_messages = {
+            "leseb": "Sébastien Han <seb@redhat.com>",
+            "mergify[bot]": "mergiyo!"
+        } %}
+
         {% for user in approved_reviews_by %}
-        {% if user == "leseb" %}
-        Approved-by: "Sébastien Han <seb@redhat.com>"
-        {% elif user == "mergify[bot]" %}
-        Approved-by: mergiyo!
-        {% else %}
-        Approved-by: {{ user }}
-        {% endif %}
+        Approved-by: {{ approval_messages.get(user, user) }}
         {% endfor %}
     delete_head_branch:
 
